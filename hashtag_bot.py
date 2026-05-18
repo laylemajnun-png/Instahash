@@ -15,7 +15,7 @@ from telebot import types
 # =============================================
 # SOZLAMALAR - BU YERDA TOKEN NI O'ZGARTIRING
 # =============================================
-BOT_TOKEN = "8898761623:AAGu7n9TwmaUvVUs8XLDnCsEYKyuxiVk6A4"
+BOT_TOKEN = "8898761623:AAEv_XO9Dq-P5CFsjfb2pfbFslKbp9wQtHg"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # =============================================
