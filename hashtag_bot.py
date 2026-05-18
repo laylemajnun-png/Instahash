@@ -1,4 +1,4 @@
-import telebot
+kimport telebot
 import yt_dlp
 import os
 import re
@@ -364,13 +364,13 @@ def callbacks(call):
 
         bot.send_message(
             call.message.chat.id,
-            f"✅ Nusxalang:
+            bot.send_message(
+    call.message.chat.id,
+    f"✅ Nusxalang:\\n\\n`{tags}`",
+    parse_mode="Markdown"
+)
 
-`{tags}`",
-            parse_mode="Markdown"
-        )
-
-
+    
 # ==========================================
 # RUN BOT
 # ==========================================
