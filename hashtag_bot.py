@@ -2,24 +2,18 @@
 Universal Hashtag Bot - O'zbek tili
 Platform: Telegram
 Kutubxona: pyTelegramBotAPI (pip install pyTelegramBotAPI)
-
-Ishga tushirish:
-1. pip install pyTelegramBotAPI
-2. BOT_TOKEN ni o'zgartiring
-3. python hashtag_bot.py
 """
 
 import telebot
 from telebot import types
 
-# =============================================
-# SOZLAMALAR - BU YERDA TOKEN NI O'ZGARTIRING
-# =============================================
 BOT_TOKEN = "8898761623:AAEv_XO9Dq-P5CFsjfb2pfbFslKbp9wQtHg"
+KANAL = "@instaheshteg_uz"
+
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # =============================================
-# HASHTAG KUTUBXONASI (500+ hashtag, 10 kategoriya)
+# HASHTAG KUTUBXONASI
 # =============================================
 HASHTAGS = {
     "biznes": {
@@ -128,8 +122,26 @@ HASHTAGS = {
 # YORDAMCHI FUNKSIYALAR
 # =============================================
 
+def obuna_tekshir(user_id):
+    try:
+        obuna = bot.get_chat_member(KANAL, user_id)
+        return obuna.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+def obuna_xabari(chat_id):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ Kanalga obuna bo'lish", url=f"https://t.me/{KANAL[1:]}"))
+    markup.add(types.InlineKeyboardButton("🔄 Tekshirish", callback_data="obuna_tekshir"))
+    bot.send_message(
+        chat_id,
+        "❗ Botdan foydalanish uchun avval kanalga obuna bo'ling:\n\n"
+        f"👉 {KANAL}\n\n"
+        "Obuna bo'lgach '🔄 Tekshirish' tugmasini bosing.",
+        reply_markup=markup
+    )
+
 def kategoriyalar_klaviaturasi():
-    """Asosiy menyu tugmalari"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     tugmalar = [types.KeyboardButton(v["nomi"]) for v in HASHTAGS.values()]
     markup.add(*tugmalar)
@@ -137,7 +149,6 @@ def kategoriyalar_klaviaturasi():
     return markup
 
 def hashtaglar_inline(kategoriya_kodi):
-    """Inline tugmalar - hashtaglar ro'yxati"""
     markup = types.InlineKeyboardMarkup(row_width=1)
     taglar = HASHTAGS[kategoriya_kodi]["taglar"]
     for i, guruh in enumerate(taglar):
@@ -150,18 +161,21 @@ def hashtaglar_inline(kategoriya_kodi):
     return markup
 
 def kategoriya_kodini_top(nomi):
-    """Kategoriya nomidan kodini topish"""
     for kod, v in HASHTAGS.items():
         if v["nomi"] == nomi:
             return kod
     return None
 
 # =============================================
-# /start BUYRUG'I
+# /start
 # =============================================
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    if not obuna_tekshir(message.from_user.id):
+        obuna_xabari(message.chat.id)
+        return
+
     matn = (
         "👋 Salom! Men *Hashtag Bot*man!\n\n"
         "📌 Nima qila olaman?\n"
@@ -178,11 +192,15 @@ def start(message):
     )
 
 # =============================================
-# /help BUYRUG'I
+# /help
 # =============================================
 
 @bot.message_handler(commands=['help'])
 def help_cmd(message):
+    if not obuna_tekshir(message.from_user.id):
+        obuna_xabari(message.chat.id)
+        return
+
     matn = (
         "📖 *Yordam*\n\n"
         "1️⃣ Kategoriya tanlang\n"
@@ -191,49 +209,33 @@ def help_cmd(message):
         "📌 *Buyruqlar:*\n"
         "/start - Boshlanish\n"
         "/help - Yordam\n"
-        "/kategoriyalar - Barcha kategoriyalar\n\n"
-        "💡 Savol yoki taklif: @sizning_username"
+        "/kategoriyalar - Barcha kategoriyalar\n"
     )
     bot.send_message(message.chat.id, matn, parse_mode="Markdown")
 
 # =============================================
-# /kategoriyalar BUYRUG'I
-# =============================================
-
-@bot.message_handler(commands=['kategoriyalar'])
-def kategoriyalar_cmd(message):
-    matn = "📂 *Barcha kategoriyalar:*\n\n"
-    for v in HASHTAGS.values():
-        matn += f"• {v['nomi']}\n"
-    bot.send_message(
-        message.chat.id,
-        matn,
-        parse_mode="Markdown",
-        reply_markup=kategoriyalar_klaviaturasi()
-    )
-
-# =============================================
-# MATN XABARLARNI QAYTA ISHLASH
+# MATN XABARLAR
 # =============================================
 
 @bot.message_handler(content_types=['text'])
 def matn_handler(message):
+    if not obuna_tekshir(message.from_user.id):
+        obuna_xabari(message.chat.id)
+        return
+
     matn = message.text.strip()
 
-    # Bot haqida
     if matn == "ℹ️ Bot haqida":
         info = (
             "🤖 *Hashtag Bot*\n\n"
             "📊 500+ hashtag\n"
             "📂 10 ta kategoriya\n"
             "🇺🇿 O'zbek tilida\n\n"
-            "Instagram, Telegram va boshqa platformalar uchun tayyor hashtaglar!\n\n"
             "✅ Bepul foydalaning"
         )
         bot.send_message(message.chat.id, info, parse_mode="Markdown")
         return
 
-    # Kategoriya tanlash
     kod = kategoriya_kodini_top(matn)
     if kod:
         bot.send_message(
@@ -249,14 +251,35 @@ def matn_handler(message):
         )
 
 # =============================================
-# INLINE TUGMA BOSILGANDA
+# INLINE TUGMALAR
 # =============================================
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     data = call.data
 
-    # Orqaga qaytish
+    if data == "obuna_tekshir":
+        if obuna_tekshir(call.from_user.id):
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            matn = (
+                "✅ Rahmat! Obuna bo'ldingiz!\n\n"
+                "👋 Salom! Men *Hashtag Bot*man!\n\n"
+                "👇 Quyidan kategoriya tanlang:"
+            )
+            bot.send_message(
+                call.message.chat.id,
+                matn,
+                parse_mode="Markdown",
+                reply_markup=kategoriyalar_klaviaturasi()
+            )
+        else:
+            bot.answer_callback_query(call.id, "❗ Hali obuna bo'lmadingiz!", show_alert=True)
+        return
+
+    if not obuna_tekshir(call.from_user.id):
+        bot.answer_callback_query(call.id, "❗ Avval kanalga obuna bo'ling!", show_alert=True)
+        return
+
     if data == "back_menu":
         bot.edit_message_text(
             "👇 Kategoriya tanlang:",
@@ -270,7 +293,6 @@ def callback_handler(call):
         )
         return
 
-    # Hashtag guruhini ko'rsatish
     if data.startswith("tag_"):
         qismlar = data.split("_", 2)
         kategoriya_kodi = qismlar[1]
