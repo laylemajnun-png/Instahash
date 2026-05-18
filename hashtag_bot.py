@@ -131,12 +131,12 @@ def obuna_tekshir(user_id):
 
 def obuna_xabari(chat_id):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Kanalga obuna bo'lish", url=f"https://t.me/{KANAL[1:]}"))
-    markup.add(types.InlineKeyboardButton("🔄 Tekshirish", callback_data="obuna_tekshir"))
+    markup.add(types.InlineKeyboardButton("𝐎𝐁𝐔𝐍𝐀 𝐁𝐎'𝐋𝐈𝐒𝐇 ✅", url=f"https://t.me/{KANAL[1:]}"))
+    markup.add(types.InlineKeyboardButton("🔄 𝐓𝐞𝐤𝐬𝐡𝐢𝐫𝐢𝐬𝐡", callback_data="obuna_tekshir"))
     bot.send_message(
         chat_id,
         "❗ Botdan foydalanish uchun avval kanalga obuna bo'ling:\n\n"
-        f"👉 {KANAL}\n\n"
+        f"👇\n\n"
         "Obuna bo'lgach '🔄 Tekshirish' tugmasini bosing.",
         reply_markup=markup
     )
