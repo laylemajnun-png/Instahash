@@ -149,7 +149,7 @@ hammasini topib beradi 🔥
 
 📢 Boshlashdan oldin kanalimizga obuna bo‘ling!
 
-✅ Obuna bo‘lgach, “Start” ni qayta bosing."
+✅ Obuna bo‘lgach, “Start” ni qayta bosing.""",
         reply_markup=markup
     )
 
