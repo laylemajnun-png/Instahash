@@ -9,8 +9,10 @@ from telebot import types
 
 BOT_TOKEN = "8898761623:AAEv_XO9Dq-P5CFsjfb2pfbFslKbp9wQtHg"
 KANAL = "@instaheshteg_uz"
+ADMIN_ID = 6391668377
 
 bot = telebot.TeleBot(BOT_TOKEN)
+USERS = set()
 
 # =============================================
 # HASHTAG KUTUBXONASI
@@ -131,33 +133,24 @@ def obuna_tekshir(user_id):
 
 def obuna_xabari(chat_id):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("𝐎𝐁𝐔𝐍𝐀 𝐁𝐎'𝐋𝐈𝐒𝐇 ✅", url=f"https://t.me/{KANAL[1:]}"))
-    markup.add(types.InlineKeyboardButton("🔄 𝐓𝐞𝐤𝐬𝐡𝐢𝐫𝐢𝐬𝐡", callback_data="obuna_tekshir"))
+    markup.add(types.InlineKeyboardButton("✅ Kanalga obuna bo'lish", url=f"https://t.me/{KANAL[1:]}"))
+    markup.add(types.InlineKeyboardButton("🔄 Tekshirish", callback_data="obuna_tekshir"))
     bot.send_message(
         chat_id,
-        "👋 Salom %first_name%!
-
-📸 Instagram uchun eng zo‘r hashtaglarni topmoqchimisiz?
-
-🤖 @instaheshtegbot sizga:
-• Trend hashtaglar
-• Like oshiruvchi teglar
-• Reels uchun hashtaglar
-• Top category hashtaglar
-
-hammasini topib beradi 🔥
-
-📢 Boshlashdan oldin kanalimizga obuna bo‘ling!
-
-✅ Obuna bo‘lgach, “Start” ni qayta bosing.""",
+        "❗ Botdan foydalanish uchun avval kanalga obuna bo'ling:\n\n"
+        f"👉 {KANAL}\n\n"
+        "Obuna bo'lgach '🔄 Tekshirish' tugmasini bosing.",
         reply_markup=markup
     )
 
-def kategoriyalar_klaviaturasi():
+def kategoriyalar_klaviaturasi(user_id=None):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     tugmalar = [types.KeyboardButton(v["nomi"]) for v in HASHTAGS.values()]
     markup.add(*tugmalar)
     markup.add(types.KeyboardButton("ℹ️ Bot haqida"))
+    if user_id and user_id == ADMIN_ID:
+        markup.add(types.KeyboardButton("📢 Xabar yuborish"))
+        markup.add(types.KeyboardButton("👥 Foydalanuvchilar soni"))
     return markup
 
 def hashtaglar_inline(kategoriya_kodi):
@@ -184,12 +177,15 @@ def kategoriya_kodini_top(nomi):
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    USERS.add(message.from_user.id)
+
     if not obuna_tekshir(message.from_user.id):
         obuna_xabari(message.chat.id)
         return
 
     matn = (
-        "👋 Salom! Men *Hashtag Bot*man!\n\n"
+        "👋 Salom! Men *Hashtag Bot*man!\n"
+        "👨‍💼 Bot egasi: Jumanazarov Behruz\n\n"
         "📌 Nima qila olaman?\n"
         "• 10 ta kategoriyadan hashtag tanlaysiz\n"
         "• Tayyor hashtaglarni nusxalab olasiz\n"
@@ -200,8 +196,36 @@ def start(message):
         message.chat.id,
         matn,
         parse_mode="Markdown",
-        reply_markup=kategoriyalar_klaviaturasi()
+        reply_markup=kategoriyalar_klaviaturasi(message.from_user.id)
     )
+
+# =============================================
+# /habar - ADMIN UCHUN BROADCAST
+# =============================================
+
+@bot.message_handler(commands=['habar'])
+def habar_yuborish(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    matn = message.text.replace('/habar', '').strip()
+    if not matn:
+        bot.send_message(message.chat.id, "❗ Xabar yozing:\n/habar Salom hammaga!")
+        return
+
+    bot.send_message(message.chat.id, f"⏳ {len(USERS)} ta foydalanuvchiga yuborilmoqda...")
+
+    muvaffaq = 0
+    xato = 0
+
+    for user_id in USERS:
+        try:
+            bot.send_message(user_id, f"📢 *Xabar:*\n\n{matn}", parse_mode="Markdown")
+            muvaffaq += 1
+        except:
+            xato += 1
+
+    bot.send_message(message.chat.id, f"✅ Yuborildi: {muvaffaq} ta\n❌ Xato: {xato} ta")
 
 # =============================================
 # /help
@@ -221,7 +245,6 @@ def help_cmd(message):
         "📌 *Buyruqlar:*\n"
         "/start - Boshlanish\n"
         "/help - Yordam\n"
-        "/kategoriyalar - Barcha kategoriyalar\n"
     )
     bot.send_message(message.chat.id, matn, parse_mode="Markdown")
 
@@ -231,11 +254,24 @@ def help_cmd(message):
 
 @bot.message_handler(content_types=['text'])
 def matn_handler(message):
+    USERS.add(message.from_user.id)
+
     if not obuna_tekshir(message.from_user.id):
         obuna_xabari(message.chat.id)
         return
 
     matn = message.text.strip()
+
+    if message.from_user.id == ADMIN_ID:
+        if matn == "📢 Xabar yuborish":
+            bot.send_message(
+                message.chat.id,
+                "✍️ Xabarni yozing:\n/habar Salom hammaga!\n\nBarcha foydalanuvchilarga yuboriladi."
+            )
+            return
+        if matn == "👥 Foydalanuvchilar soni":
+            bot.send_message(message.chat.id, f"👥 Jami foydalanuvchilar: *{len(USERS)} ta*", parse_mode="Markdown")
+            return
 
     if matn == "ℹ️ Bot haqida":
         info = (
@@ -259,7 +295,7 @@ def matn_handler(message):
         bot.send_message(
             message.chat.id,
             "👇 Iltimos, quyidagi kategoriyalardan birini tanlang:",
-            reply_markup=kategoriyalar_klaviaturasi()
+            reply_markup=kategoriyalar_klaviaturasi(message.from_user.id)
         )
 
 # =============================================
@@ -275,14 +311,15 @@ def callback_handler(call):
             bot.delete_message(call.message.chat.id, call.message.message_id)
             matn = (
                 "✅ Rahmat! Obuna bo'ldingiz!\n\n"
-                "👋 Salom! Men *Hashtag Bot*man!\n\n"
+                "👋 Salom! Men *Hashtag Bot*man!\n"
+                "👨‍💼 Bot egasi: Jumanazarov Behruz\n\n"
                 "👇 Quyidan kategoriya tanlang:"
             )
             bot.send_message(
                 call.message.chat.id,
                 matn,
                 parse_mode="Markdown",
-                reply_markup=kategoriyalar_klaviaturasi()
+                reply_markup=kategoriyalar_klaviaturasi(call.from_user.id)
             )
         else:
             bot.answer_callback_query(call.id, "❗ Hali obuna bo'lmadingiz!", show_alert=True)
@@ -301,7 +338,7 @@ def callback_handler(call):
         bot.send_message(
             call.message.chat.id,
             "✅ Asosiy menyu:",
-            reply_markup=kategoriyalar_klaviaturasi()
+            reply_markup=kategoriyalar_klaviaturasi(call.from_user.id)
         )
         return
 
