@@ -363,10 +363,8 @@ def callbacks(call):
         tags = HASHTAGS.get(category)
 
         bot.send_message(
-            call.message.chat.id,
-            bot.send_message(
     call.message.chat.id,
-    f"✅ Nusxalang:\\n\\n`{tags}`",
+    f"✅ Nusxalangan:\n\n`{tags}`",
     parse_mode="Markdown"
 )
 
