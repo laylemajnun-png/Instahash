@@ -9,13 +9,47 @@ import telebot
 import yt_dlp
 import os
 import re
+import json
 import tempfile
 from telebot import types
 
-BOT_TOKEN = "8898761623:AAFvubHB-KPaj7QMurVUMPBs7eKXNgzJDGY"
-KANAL = "@instaheshteg_uz"
+BOT_TOKEN = "8898761623:AAG79Sen-hjQMeoU5dFKJRZDvRtkneiZP2g"
+KANAL = "@ixo_uzz"
+ADMIN_IDS = [6391668377]  # <-- O'z Telegram ID'ingizni yozing
+
+# Foydalanuvchilar bazasi (json fayl)
+USERS_FILE = "users.json"
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# =============================================
+# FOYDALANUVCHILAR BAZASI
+# =============================================
+
+def users_yukla():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def users_saqlash(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f)
+
+def foydalanuvchi_qoshish(user):
+    users = users_yukla()
+    uid = str(user.id)
+    if uid not in users:
+        users[uid] = {
+            "id": user.id,
+            "ism": user.first_name or "",
+            "username": user.username or ""
+        }
+        users_saqlash(users)
+
+def barcha_userlar():
+    users = users_yukla()
+    return [v["id"] for v in users.values()]
 
 # =============================================
 # INSTAGRAM URL TEKSHIRUVI
@@ -40,10 +74,6 @@ def url_ajrat(matn):
 # =============================================
 
 def instagram_video_yukla(url):
-    """
-    Qaytaradi: (fayl_yoli, tur) yoki (None, xato_xabar)
-    tur: 'video' yoki 'photo'
-    """
     tmp_dir = tempfile.mkdtemp()
     fayl_nomi = os.path.join(tmp_dir, "instagram_%(id)s.%(ext)s")
 
@@ -52,7 +82,6 @@ def instagram_video_yukla(url):
         "quiet": True,
         "no_warnings": True,
         "format": "best[ext=mp4]/best",
-        # Agar Instagram cookie kerak bo'lsa quyidagini yoching:
         # "cookiefile": "instagram_cookies.txt",
     }
 
@@ -61,11 +90,9 @@ def instagram_video_yukla(url):
             info = ydl.extract_info(url, download=True)
             yuklab_fayl = ydl.prepare_filename(info)
 
-            # Fayl mavjudmi tekshir
             if os.path.exists(yuklab_fayl):
                 return yuklab_fayl, "video"
 
-            # Ba'zan kengaytma o'zgarishi mumkin
             for f in os.listdir(tmp_dir):
                 to_liq = os.path.join(tmp_dir, f)
                 if os.path.isfile(to_liq):
@@ -96,6 +123,7 @@ def faylni_tozala(yol):
 # =============================================
 # HASHTAG KUTUBXONASI
 # =============================================
+
 HASHTAGS = {
     "biznes": {
         "nomi": "💼 Biznes va Savdo",
@@ -203,6 +231,9 @@ HASHTAGS = {
 # YORDAMCHI FUNKSIYALAR
 # =============================================
 
+def admin_mi(user_id):
+    return user_id in ADMIN_IDS
+
 def obuna_tekshir(user_id):
     try:
         obuna = bot.get_chat_member(KANAL, user_id)
@@ -222,12 +253,42 @@ def obuna_xabari(chat_id):
         reply_markup=markup
     )
 
-def kategoriyalar_klaviaturasi():
+# =============================================
+# KLAVIATURALAR
+# =============================================
+
+def asosiy_menu():
+    """Asosiy 2 bo'limli menyu"""
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton("📥 Video Yuklab olish"),
+        types.KeyboardButton("🏷 Hashtaglar")
+    )
+    markup.add(types.KeyboardButton("ℹ️ Bot haqida"))
+    return markup
+
+def video_bolim_menu():
+    """Video bo'limi klaviaturasi"""
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    markup.add(types.KeyboardButton("⬅️ Orqaga"))
+    return markup
+
+def hashtag_bolim_menu():
+    """Hashtag bo'limi - kategoriyalar"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     tugmalar = [types.KeyboardButton(v["nomi"]) for v in HASHTAGS.values()]
     markup.add(*tugmalar)
-    markup.add(types.KeyboardButton("📥 Video Yuklab olish"))
-    markup.add(types.KeyboardButton("ℹ️ Bot haqida"))
+    markup.add(types.KeyboardButton("⬅️ Orqaga"))
+    return markup
+
+def admin_menu():
+    """Admin panel klaviaturasi"""
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton("📢 Xabar yuborish"),
+        types.KeyboardButton("👥 Foydalanuvchilar soni")
+    )
+    markup.add(types.KeyboardButton("🔙 Oddiy menyu"))
     return markup
 
 def hashtaglar_inline(kategoriya_kodi):
@@ -239,7 +300,6 @@ def hashtaglar_inline(kategoriya_kodi):
             f"📋 {birinchi} ... ({len(guruh.split())} ta)",
             callback_data=f"tag_{kategoriya_kodi}_{i}"
         ))
-    markup.add(types.InlineKeyboardButton("⬅️ Orqaga", callback_data="back_menu"))
     return markup
 
 def kategoriya_kodini_top(nomi):
@@ -249,29 +309,64 @@ def kategoriya_kodini_top(nomi):
     return None
 
 # =============================================
+# HOLAT BOSHQARISH (state)
+# =============================================
+
+user_states = {}  # {user_id: "holat"}
+# Holat qiymatlari:
+# None        - asosiy menyu
+# "video"     - video bo'limida
+# "hashtag"   - hashtag bo'limida
+# "admin"     - admin panelda
+# "broadcast" - xabar yozish kutilmoqda
+
+# =============================================
 # /start
 # =============================================
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    foydalanuvchi_qoshish(message.from_user)
+
     if not obuna_tekshir(message.from_user.id):
         obuna_xabari(message.chat.id)
         return
 
+    user_states[message.from_user.id] = None
+
     matn = (
         "👋 Salom! Men *Hashtag Bot*man!\n\n"
-        "📌 Nima qila olaman?\n"
-        "• 10 ta kategoriyadan hashtag tanlaysiz\n"
-        "• Tayyor hashtaglarni nusxalab olasiz\n"
-        "• 500+ dan ortiq hashtag mavjud\n"
-        "• 📥 Instagram video/reel/stories yuklab olish\n\n"
-        "👇 Quyidan kategoriya tanlang yoki Instagram havolasini yuboring:"
+        "📌 Nimalar bor?\n"
+        "📥 *Video Yuklab olish* — Instagram Reel/Post/Stories\n"
+        "🏷 *Hashtaglar* — 500+ tayyor hashtag\n\n"
+        "👇 Bo'lim tanlang:"
     )
     bot.send_message(
         message.chat.id,
         matn,
         parse_mode="Markdown",
-        reply_markup=kategoriyalar_klaviaturasi()
+        reply_markup=asosiy_menu()
+    )
+
+# =============================================
+# /admin
+# =============================================
+
+@bot.message_handler(commands=['admin'])
+def admin_cmd(message):
+    if not admin_mi(message.from_user.id):
+        bot.send_message(message.chat.id, "❌ Siz admin emassiz.")
+        return
+
+    user_states[message.from_user.id] = "admin"
+    users = users_yukla()
+    bot.send_message(
+        message.chat.id,
+        f"🔐 *Admin Panel*\n\n"
+        f"👥 Jami foydalanuvchilar: *{len(users)}* ta\n\n"
+        "Quyidan amal tanlang:",
+        parse_mode="Markdown",
+        reply_markup=admin_menu()
     )
 
 # =============================================
@@ -286,37 +381,14 @@ def help_cmd(message):
 
     matn = (
         "📖 *Yordam*\n\n"
-        "1️⃣ Kategoriya tanlang\n"
-        "2️⃣ Hashtaglar guruhini bosing\n"
-        "3️⃣ Hashtaglarni nusxalab oling\n\n"
-        "📥 *Video yuklab olish:*\n"
-        "Instagram Reel, Post yoki Stories havolasini yuboring — bot avtomatik yuklab beradi!\n\n"
+        "📥 *Video bo'limi:*\n"
+        "Instagram Reel, Post yoki Stories havolasini yuboring\n\n"
+        "🏷 *Hashtag bo'limi:*\n"
+        "Kategoriya tanlab, tayyor hashtaglarni nusxalab oling\n\n"
         "📌 *Buyruqlar:*\n"
         "/start - Boshlanish\n"
         "/help - Yordam\n"
-        "/yukla - Video yuklab olish haqida\n"
-    )
-    bot.send_message(message.chat.id, matn, parse_mode="Markdown")
-
-# =============================================
-# /yukla
-# =============================================
-
-@bot.message_handler(commands=['yukla'])
-def yukla_cmd(message):
-    if not obuna_tekshir(message.from_user.id):
-        obuna_xabari(message.chat.id)
-        return
-
-    matn = (
-        "📥 *Instagram Video Yuklab Olish*\n\n"
-        "Qo'llab-quvvatlanadigan turlar:\n"
-        "• 🎬 Reels\n"
-        "• 🖼 Post (video)\n"
-        "• 📖 Stories\n\n"
-        "Faqat Instagram havolasini yuboring, masalan:\n"
-        "`https://www.instagram.com/reel/ABC123/`\n\n"
-        "⚠️ Yopiq (private) postlar yuklanmaydi."
+        "/admin - Admin panel (faqat adminlar)\n"
     )
     bot.send_message(message.chat.id, matn, parse_mode="Markdown")
 
@@ -326,89 +398,231 @@ def yukla_cmd(message):
 
 @bot.message_handler(content_types=['text'])
 def matn_handler(message):
-    if not obuna_tekshir(message.from_user.id):
+    uid = message.from_user.id
+    matn = message.text.strip()
+    holat = user_states.get(uid)
+
+    # --- Foydalanuvchini ro'yxatga olish ---
+    foydalanuvchi_qoshish(message.from_user)
+
+    # ==================
+    # ADMIN PANEL
+    # ==================
+    if holat == "admin" and admin_mi(uid):
+        if matn == "📢 Xabar yuborish":
+            user_states[uid] = "broadcast"
+            bot.send_message(
+                message.chat.id,
+                "✏️ Barcha foydalanuvchilarga yuboriladigan xabarni yozing:\n\n"
+                "(Bekor qilish uchun /bekor yozing)"
+            )
+            return
+
+        if matn == "👥 Foydalanuvchilar soni":
+            users = users_yukla()
+            bot.send_message(
+                message.chat.id,
+                f"👥 Jami foydalanuvchilar: *{len(users)}* ta",
+                parse_mode="Markdown"
+            )
+            return
+
+        if matn == "🔙 Oddiy menyu":
+            user_states[uid] = None
+            bot.send_message(
+                message.chat.id,
+                "✅ Asosiy menyuga qaytdingiz.",
+                reply_markup=asosiy_menu()
+            )
+            return
+
+    # ==================
+    # BROADCAST HOLATI
+    # ==================
+    if holat == "broadcast" and admin_mi(uid):
+        if matn == "/bekor":
+            user_states[uid] = "admin"
+            bot.send_message(
+                message.chat.id,
+                "❌ Bekor qilindi.",
+                reply_markup=admin_menu()
+            )
+            return
+
+        # Xabar yuborish
+        userlar = barcha_userlar()
+        yuborildi = 0
+        xato = 0
+
+        progress_xabar = bot.send_message(
+            message.chat.id,
+            f"⏳ Yuborilmoqda... 0/{len(userlar)}"
+        )
+
+        for i, user_id in enumerate(userlar):
+            try:
+                bot.send_message(user_id, f"📢 *Yangilik:*\n\n{matn}", parse_mode="Markdown")
+                yuborildi += 1
+            except:
+                xato += 1
+
+            # Har 20 ta da progress yangilansin
+            if (i + 1) % 20 == 0:
+                try:
+                    bot.edit_message_text(
+                        f"⏳ Yuborilmoqda... {i+1}/{len(userlar)}",
+                        message.chat.id,
+                        progress_xabar.message_id
+                    )
+                except:
+                    pass
+
+        bot.edit_message_text(
+            f"✅ *Yuborildi!*\n\n"
+            f"✔️ Muvaffaqiyatli: {yuborildi}\n"
+            f"❌ Xato (bloklagan): {xato}\n"
+            f"📊 Jami: {len(userlar)}",
+            message.chat.id,
+            progress_xabar.message_id,
+            parse_mode="Markdown"
+        )
+        user_states[uid] = "admin"
+        bot.send_message(message.chat.id, "Admin panel:", reply_markup=admin_menu())
+        return
+
+    # ==================
+    # OBUNA TEKSHIRISH
+    # ==================
+    if not obuna_tekshir(uid):
         obuna_xabari(message.chat.id)
         return
 
-    matn = message.text.strip()
-
-    # --- Instagram URL bo'lsa ---
-    if instagram_url_mi(matn):
-        url = url_ajrat(matn)
-        kutish = bot.send_message(
+    # ==================
+    # ORQAGA TUGMASI
+    # ==================
+    if matn == "⬅️ Orqaga":
+        user_states[uid] = None
+        bot.send_message(
             message.chat.id,
-            "⏳ Video yuklanmoqda, biroz kuting..."
+            "🏠 Asosiy menyu:",
+            reply_markup=asosiy_menu()
         )
-        fayl_yoli, tur = instagram_video_yukla(url)
+        return
 
-        bot.delete_message(message.chat.id, kutish.message_id)
+    # ==================
+    # ASOSIY MENYU
+    # ==================
+    if holat is None:
+        if matn == "📥 Video Yuklab olish":
+            user_states[uid] = "video"
+            bot.send_message(
+                message.chat.id,
+                "📥 *Video Yuklab Olish Bo'limi*\n\n"
+                "Qo'llab-quvvatlanadigan turlar:\n"
+                "• 🎬 Reels\n"
+                "• 🖼 Post (video)\n"
+                "• 📖 Stories\n\n"
+                "Instagram havolasini yuboring:\n"
+                "`https://www.instagram.com/reel/ABC123/`\n\n"
+                "⚠️ Yopiq (private) postlar yuklanmaydi.",
+                parse_mode="Markdown",
+                reply_markup=video_bolim_menu()
+            )
+            return
 
-        if fayl_yoli:
-            try:
-                with open(fayl_yoli, "rb") as f:
-                    bot.send_video(
-                        message.chat.id,
-                        f,
-                        caption="✅ Mana sizning videongiz!\n\n📥 @instaheshtegbot",
-                        supports_streaming=True
-                    )
-            except Exception:
-                # Agar video yuborib bo'lmasa, fayl sifatida yuborish
+        if matn == "🏷 Hashtaglar":
+            user_states[uid] = "hashtag"
+            bot.send_message(
+                message.chat.id,
+                "🏷 *Hashtag Bo'limi*\n\n"
+                "Kategoriya tanlang:",
+                parse_mode="Markdown",
+                reply_markup=hashtag_bolim_menu()
+            )
+            return
+
+        if matn == "ℹ️ Bot haqida":
+            users = users_yukla()
+            info = (
+                "🤖 *Hashtag Bot*\n\n"
+                f"👥 Foydalanuvchilar: {len(users)} ta\n"
+                "📊 500+ hashtag\n"
+                "📂 10 ta kategoriya\n"
+                "📥 Instagram video yuklab olish\n"
+                "🇺🇿 O'zbek tilida\n\n"
+                "✅ Bepul foydalaning"
+            )
+            bot.send_message(message.chat.id, info, parse_mode="Markdown")
+            return
+
+        bot.send_message(
+            message.chat.id,
+            "👇 Bo'lim tanlang:",
+            reply_markup=asosiy_menu()
+        )
+        return
+
+    # ==================
+    # VIDEO BO'LIMI
+    # ==================
+    if holat == "video":
+        if instagram_url_mi(matn):
+            url = url_ajrat(matn)
+            kutish = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda, biroz kuting...")
+            fayl_yoli, tur = instagram_video_yukla(url)
+            bot.delete_message(message.chat.id, kutish.message_id)
+
+            if fayl_yoli:
                 try:
                     with open(fayl_yoli, "rb") as f:
-                        bot.send_document(
+                        bot.send_video(
                             message.chat.id,
                             f,
-                            caption="✅ Mana sizning faylingiz!\n\n📥 @instaheshtegbot"
+                            caption="✅ Mana sizning videongiz!\n\n📥 @instaheshtegbot",
+                            supports_streaming=True
                         )
-                except Exception as e:
-                    bot.send_message(message.chat.id, f"⚠️ Yuborishda xatolik: {str(e)[:200]}")
-            finally:
-                faylni_tozala(fayl_yoli)
+                except Exception:
+                    try:
+                        with open(fayl_yoli, "rb") as f:
+                            bot.send_document(
+                                message.chat.id,
+                                f,
+                                caption="✅ Mana sizning faylingiz!\n\n📥 @instaheshtegbot"
+                            )
+                    except Exception as e:
+                        bot.send_message(message.chat.id, f"⚠️ Yuborishda xatolik: {str(e)[:200]}")
+                finally:
+                    faylni_tozala(fayl_yoli)
+            else:
+                bot.send_message(message.chat.id, tur)
         else:
-            bot.send_message(message.chat.id, tur)  # tur = xato xabari
+            bot.send_message(
+                message.chat.id,
+                "⚠️ Instagram havolasi emas.\n\n"
+                "To'g'ri havola misoli:\n"
+                "`https://www.instagram.com/reel/ABC123/`",
+                parse_mode="Markdown"
+            )
         return
 
-    # --- Video yuklab olish tugmasi ---
-    if matn == "📥 Video Yuklab olish":
-        bot.send_message(
-            message.chat.id,
-            "📥 *Instagram Video Yuklab Olish*\n\n"
-            "Instagram Reel, Post yoki Stories havolasini yuboring:\n\n"
-            "Masalan:\n"
-            "`https://www.instagram.com/reel/ABC123/`\n\n"
-            "⚠️ Yopiq (private) postlar yuklanmaydi.",
-            parse_mode="Markdown"
-        )
+    # ==================
+    # HASHTAG BO'LIMI
+    # ==================
+    if holat == "hashtag":
+        kod = kategoriya_kodini_top(matn)
+        if kod:
+            bot.send_message(
+                message.chat.id,
+                f"{HASHTAGS[kod]['nomi']}\n\n📋 Qaysi guruhni olmoqchisiz?",
+                reply_markup=hashtaglar_inline(kod)
+            )
+        else:
+            bot.send_message(
+                message.chat.id,
+                "👇 Kategoriya tanlang:",
+                reply_markup=hashtag_bolim_menu()
+            )
         return
-
-    # --- Bot haqida ---
-    if matn == "ℹ️ Bot haqida":
-        info = (
-            "🤖 *Hashtag Bot*\n\n"
-            "📊 500+ hashtag\n"
-            "📂 10 ta kategoriya\n"
-            "📥 Instagram video yuklab olish\n"
-            "🇺🇿 O'zbek tilida\n\n"
-            "✅ Bepul foydalaning"
-        )
-        bot.send_message(message.chat.id, info, parse_mode="Markdown")
-        return
-
-    # --- Kategoriya ---
-    kod = kategoriya_kodini_top(matn)
-    if kod:
-        bot.send_message(
-            message.chat.id,
-            f"{HASHTAGS[kod]['nomi']}\n\n📋 Qaysi guruhni olmoqchisiz?",
-            reply_markup=hashtaglar_inline(kod)
-        )
-    else:
-        bot.send_message(
-            message.chat.id,
-            "👇 Iltimos, quyidagi kategoriyalardan birini tanlang yoki Instagram havolasini yuboring:",
-            reply_markup=kategoriyalar_klaviaturasi()
-        )
 
 # =============================================
 # INLINE TUGMALAR
@@ -421,16 +635,17 @@ def callback_handler(call):
     if data == "obuna_tekshir":
         if obuna_tekshir(call.from_user.id):
             bot.delete_message(call.message.chat.id, call.message.message_id)
+            user_states[call.from_user.id] = None
             matn = (
                 "✅ Rahmat! Obuna bo'ldingiz!\n\n"
                 "👋 Salom! Men *Hashtag Bot*man!\n\n"
-                "👇 Quyidan kategoriya tanlang yoki Instagram havolasini yuboring:"
+                "👇 Bo'lim tanlang:"
             )
             bot.send_message(
                 call.message.chat.id,
                 matn,
                 parse_mode="Markdown",
-                reply_markup=kategoriyalar_klaviaturasi()
+                reply_markup=asosiy_menu()
             )
         else:
             bot.answer_callback_query(call.id, "❗ Hali obuna bo'lmadingiz!", show_alert=True)
@@ -438,19 +653,6 @@ def callback_handler(call):
 
     if not obuna_tekshir(call.from_user.id):
         bot.answer_callback_query(call.id, "❗ Avval kanalga obuna bo'ling!", show_alert=True)
-        return
-
-    if data == "back_menu":
-        bot.edit_message_text(
-            "👇 Kategoriya tanlang:",
-            call.message.chat.id,
-            call.message.message_id
-        )
-        bot.send_message(
-            call.message.chat.id,
-            "✅ Asosiy menyu:",
-            reply_markup=kategoriyalar_klaviaturasi()
-        )
         return
 
     if data.startswith("tag_"):
@@ -472,6 +674,7 @@ def callback_handler(call):
 # =============================================
 
 if __name__ == "__main__":
-    print("🤖 Hashtag Bot (Video yuklab olish bilan) ishga tushdi...")
+    print("🤖 Hashtag Bot ishga tushdi...")
+    print("Admin ID:", ADMIN_IDS)
     print("Toxtatish uchun Ctrl+C bosing")
     bot.infinity_polling()
