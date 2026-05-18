@@ -135,9 +135,21 @@ def obuna_xabari(chat_id):
     markup.add(types.InlineKeyboardButton("🔄 𝐓𝐞𝐤𝐬𝐡𝐢𝐫𝐢𝐬𝐡", callback_data="obuna_tekshir"))
     bot.send_message(
         chat_id,
-        "❗ Botdan foydalanish uchun avval kanalga obuna bo'ling:\n\n"
-        f"👇\n\n"
-        "Obuna bo'lgach '🔄 Tekshirish' tugmasini bosing.",
+        "👋 Salom %first_name%!
+
+📸 Instagram uchun eng zo‘r hashtaglarni topmoqchimisiz?
+
+🤖 @instaheshtegbot sizga:
+• Trend hashtaglar
+• Like oshiruvchi teglar
+• Reels uchun hashtaglar
+• Top category hashtaglar
+
+hammasini topib beradi 🔥
+
+📢 Boshlashdan oldin kanalimizga obuna bo‘ling!
+
+✅ Obuna bo‘lgach, “Start” ni qayta bosing.",
         reply_markup=markup
     )
 
