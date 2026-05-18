@@ -13,7 +13,7 @@ import json
 import tempfile
 from telebot import types
 
-BOT_TOKEN = "8898761623:AAG79Sen-hjQMeoU5dFKJRZDvRtkneiZP2g"
+BOT_TOKEN = "8944587981:AAHYbzQYuwWltQkRhTyeyscDySONzhmvT-8"
 KANAL = "@ixo_uzz"
 ADMIN_IDS = [6391668377]  # <-- O'z Telegram ID'ingizni yozing
 
