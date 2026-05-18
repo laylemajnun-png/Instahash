@@ -1,2 +1,1 @@
-pyTelegramBotAPI
-yt-dlp
+pip install pyTelegramBotAPI yt-dlp python-dotenv
